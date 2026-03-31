@@ -1,9 +1,10 @@
-from flask import Flask, request, jsonify, render_template, send_file
+from flask import Flask, request, jsonify, render_template, send_file, Response
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client
 from dotenv import load_dotenv
 import os
 import csv
+import requests
 from datetime import datetime
 
 load_dotenv()
@@ -18,7 +19,10 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
 
-PREFERRED_VOICE = "Polly.Joanna"
+# Puedes probar estas voces:
+# "Polly.Joanna-Generative"
+# "Polly.Joanna"
+PREFERRED_VOICE = "Polly.Joanna-Generative"
 VOICE_LANGUAGE = "en-US"
 
 
@@ -38,19 +42,20 @@ def ensure_csv_exists():
                 "call_sid",
                 "to_number",
                 "from_number",
-                "question_1",
-                "question_2",
-                "question_3",
+                "question_1_used_community",
+                "question_2_email_permission",
+                "question_3_interested_session",
                 "short_notes",
-                "recording_url"
+                "recording_url",
+                "recording_sid"
             ])
 
 
 def build_short_notes(q1: str, q2: str, q3: str) -> str:
     return (
-        f"Related to: {q1 or 'No answer'}. "
-        f"Main issue: {q2 or 'No answer'}. "
-        f"Situation: {q3 or 'No answer'}."
+        f"Used Community: {q1 or 'No answer'}. "
+        f"Email permission: {q2 or 'No answer'}. "
+        f"Interested in guided session: {q3 or 'No answer'}."
     )
 
 
@@ -89,7 +94,8 @@ def save_to_csv(call_sid: str):
                 data.get("q2", ""),
                 data.get("q3", "")
             ),
-            data.get("recording_url", "")
+            data.get("recording_url", ""),
+            data.get("recording_sid", "")
         ])
 
 
@@ -147,6 +153,7 @@ def voice():
         "q2": "",
         "q3": "",
         "recording_url": "",
+        "recording_sid": "",
         "survey_finished": False
     }
 
@@ -161,12 +168,13 @@ def voice():
     gather.say(
         (
             "Hello, and thank you for taking this call. "
-            "This is an automated customer care follow up from Command Alkon. "
-            "We are reaching out to better understand your recent support experience. "
+            "My name is Emma, and I am a virtual community guide from Command Alkon. "
+            "I would love to briefly introduce you to the Command Alkon Community, "
+            "where you can manage your cases, review knowledge articles, create support cases, "
+            "and access helpful groups designed to support your experience. "
             "This call may be recorded for quality and documentation purposes. "
-            "I will ask you three short questions. "
-            "You can answer naturally after each question. "
-            "First question. Was this related to a recent support case, or was it more of a general issue?"
+            "I will ask you three short questions, and you can answer naturally after each one. "
+            "First question. Have you used the Command Alkon Community before?"
         ),
         voice=PREFERRED_VOICE,
         language=VOICE_LANGUAGE
@@ -174,7 +182,10 @@ def voice():
 
     response.append(gather)
     response.say(
-        "We were not able to capture a response. Thank you for your time. Goodbye.",
+        (
+            "We were not able to capture a response. "
+            "Thank you for your time, and we hope to connect with you soon. Goodbye."
+        ),
         voice=PREFERRED_VOICE,
         language=VOICE_LANGUAGE
     )
@@ -200,11 +211,12 @@ def question2():
         action="/question3",
         method="POST"
     )
+
     gather.say(
         (
             "Thank you. "
             "Second question. "
-            "Could you please describe the main issue you experienced?"
+            "Would you feel comfortable sharing your email address so our team can contact you and continue supporting you if needed?"
         ),
         voice=PREFERRED_VOICE,
         language=VOICE_LANGUAGE
@@ -212,7 +224,10 @@ def question2():
 
     response.append(gather)
     response.say(
-        "We were not able to capture a response. Thank you for your time. Goodbye.",
+        (
+            "We were not able to capture a response. "
+            "Thank you for your time, and we hope to connect with you soon. Goodbye."
+        ),
         voice=PREFERRED_VOICE,
         language=VOICE_LANGUAGE
     )
@@ -238,11 +253,13 @@ def question3():
         action="/complete",
         method="POST"
     )
+
     gather.say(
         (
             "Thank you. "
             "Final question. "
-            "Has this issue been recurring, or was it a one time situation?"
+            "Would you be interested in a dedicated session to help you learn how to use the Community, "
+            "including how to create your first cases and explore the available resources?"
         ),
         voice=PREFERRED_VOICE,
         language=VOICE_LANGUAGE
@@ -250,7 +267,10 @@ def question3():
 
     response.append(gather)
     response.say(
-        "We were not able to capture a response. Thank you for your time. Goodbye.",
+        (
+            "We were not able to capture a response. "
+            "Thank you for your time, and we hope to connect with you soon. Goodbye."
+        ),
         voice=PREFERRED_VOICE,
         language=VOICE_LANGUAGE
     )
@@ -272,9 +292,12 @@ def complete():
     response = VoiceResponse()
     response.say(
         (
-            "Thank you for sharing your feedback with Command Alkon. "
-            "Your responses have been recorded and will help us improve the support experience. "
-            "Have a great day. Goodbye."
+            "Thank you so much for your time today. "
+            "We truly appreciate your feedback. "
+            "If you would like, you can visit the Command Alkon Community "
+            "to manage your cases, view knowledge articles, create cases, and access community groups. "
+            "We look forward to supporting you there. "
+            "Have a wonderful day. Goodbye."
         ),
         voice=PREFERRED_VOICE,
         language=VOICE_LANGUAGE
@@ -289,15 +312,39 @@ def complete():
 def recording_status():
     call_sid = request.values.get("CallSid", "")
     recording_url = request.values.get("RecordingUrl", "")
+    recording_sid = request.values.get("RecordingSid", "")
     recording_status = request.values.get("RecordingStatus", "")
 
     if call_sid in call_data and recording_status == "completed":
         call_data[call_sid]["recording_url"] = recording_url + ".mp3"
+        call_data[call_sid]["recording_sid"] = recording_sid
 
         if call_data[call_sid].get("survey_finished"):
             save_to_csv(call_sid)
 
     return ("", 204)
+
+
+@app.route("/recording/<recording_sid>", methods=["GET"])
+def stream_recording(recording_sid):
+    try:
+        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+
+        audio_url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Recordings/{recording_sid}.mp3"
+
+        twilio_response = requests.get(
+            audio_url,
+            auth=(account_sid, auth_token),
+            timeout=30
+        )
+
+        return Response(
+            twilio_response.content,
+            mimetype="audio/mpeg"
+        )
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 
 @app.route("/call/<path:phone_number>", methods=["GET"])
@@ -322,6 +369,14 @@ def make_call_pretty(phone_number):
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/debug-logo", methods=["GET"])
+def debug_logo():
+    return jsonify({
+        "logo_expected_path": "/static/logo.png",
+        "public_logo_url": f"{os.getenv('PUBLIC_BASE_URL')}/static/logo.png"
+    })
 
 
 if __name__ == "__main__":
