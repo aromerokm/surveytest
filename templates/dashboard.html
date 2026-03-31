@@ -3,101 +3,193 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>COMMAND ALKON Survey Caller</title>
+  <title>Command Alkon Survey Caller</title>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: #f4f7fb;
-      color: #1b1f23;
+      background: linear-gradient(180deg, #eef3f9 0%, #f8fafc 100%);
+      color: #14213d;
     }
+
     .container {
-      max-width: 1100px;
-      margin: 40px auto;
-      background: white;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+      max-width: 1180px;
+      margin: 36px auto;
+      background: #ffffff;
+      border-radius: 22px;
+      box-shadow: 0 18px 45px rgba(0, 24, 54, 0.12);
       overflow: hidden;
     }
+
     .header {
-      background: #002b54;
-      color: white;
-      padding: 32px;
+      background: #ffffff;
+      padding: 28px 32px;
+      border-bottom: 1px solid #e8edf5;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
     }
-    .header h1 {
+
+    .logo-wrap {
+      background: #ffffff;
+      padding: 10px 14px;
+      border-radius: 16px;
+      border: 1px solid #edf2f7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-wrap img {
+      height: 72px;
+      width: auto;
+      display: block;
+    }
+
+    .header-text h1 {
       margin: 0;
-      font-size: 28px;
+      font-size: 30px;
+      color: #002b54;
+      line-height: 1.1;
     }
-    .header p {
-      margin-top: 8px;
-      opacity: 0.9;
+
+    .header-text p {
+      margin: 8px 0 0;
+      color: #516074;
+      font-size: 15px;
     }
+
     .content {
-      padding: 32px;
+      padding: 30px;
     }
+
     .card {
-      background: #f9fbfd;
-      border: 1px solid #e3e8ef;
-      border-radius: 14px;
+      background: #ffffff;
+      border: 1px solid #e7edf4;
+      border-radius: 18px;
       padding: 24px;
       margin-bottom: 24px;
+      box-shadow: 0 8px 20px rgba(14, 31, 53, 0.05);
     }
+
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 18px;
+      color: #002b54;
+    }
+
     .row {
       display: flex;
       gap: 12px;
       flex-wrap: wrap;
     }
+
     input {
       flex: 1;
-      min-width: 240px;
-      padding: 14px;
-      border: 1px solid #cfd7e3;
-      border-radius: 10px;
+      min-width: 250px;
+      padding: 15px 16px;
+      border: 1px solid #cfd8e3;
+      border-radius: 12px;
       font-size: 16px;
+      outline: none;
     }
+
+    input:focus {
+      border-color: #002b54;
+      box-shadow: 0 0 0 4px rgba(0, 43, 84, 0.08);
+    }
+
     button, a.btn {
       background: #002b54;
       color: white;
       border: none;
-      border-radius: 10px;
+      border-radius: 12px;
       padding: 14px 18px;
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
       font-size: 15px;
+      font-weight: 600;
     }
+
+    button:hover, a.btn:hover {
+      opacity: 0.95;
+    }
+
     button.secondary, a.secondary {
-      background: #e8eef6;
+      background: #eef3f8;
       color: #002b54;
     }
+
     #status {
-      margin-top: 14px;
-      font-weight: bold;
+      margin-top: 16px;
+      font-weight: 600;
+      color: #1c3557;
     }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 16px;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
       background: white;
-      border-radius: 10px;
-      overflow: hidden;
     }
+
     th, td {
       text-align: left;
       padding: 12px;
-      border-bottom: 1px solid #e9edf3;
+      border-bottom: 1px solid #e8edf4;
       font-size: 14px;
       vertical-align: top;
     }
+
     th {
-      background: #f2f6fb;
+      background: #f4f8fc;
+      color: #002b54;
+      position: sticky;
+      top: 0;
+    }
+
+    .hint {
+      margin-top: 8px;
+      color: #67778d;
+      font-size: 13px;
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .logo-wrap img {
+        height: 58px;
+      }
+
+      .header-text h1 {
+        font-size: 24px;
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>COMMAND ALKON Survey Caller</h1>
-      <p>Outbound voice survey dashboard</p>
+      <div class="logo-wrap">
+        <img src="/static/logo.png" alt="COMMAND ALKON Logo">
+      </div>
+      <div class="header-text">
+        <h1>Command Alkon Survey Caller</h1>
+        <p>Outbound voice survey dashboard</p>
+      </div>
     </div>
 
     <div class="content">
@@ -108,13 +200,17 @@
           <button onclick="startCall()">Call Now</button>
           <a class="btn secondary" href="/download-results">Export CSV</a>
         </div>
+        <div class="hint">Use country code without spaces. Example: 573001112233</div>
         <div id="status"></div>
       </div>
 
       <div class="card">
         <h2>Survey Results</h2>
-        <button class="secondary" onclick="loadResults()">Refresh Results</button>
-        <div style="margin-top: 16px; overflow-x:auto;">
+        <div class="row">
+          <button class="secondary" onclick="loadResults()">Refresh Results</button>
+        </div>
+
+        <div class="table-wrap">
           <table id="resultsTable">
             <thead>
               <tr>
