@@ -1,384 +1,357 @@
-from flask import Flask, request, jsonify, render_template, send_file, Response
-from twilio.twiml.voice_response import VoiceResponse, Gather
-from twilio.rest import Client
-from dotenv import load_dotenv
-import os
-import csv
-import requests
-from datetime import datetime
-
-load_dotenv()
-
-app = Flask(__name__)
-
-CSV_FILE = "survey_results.csv"
-call_data = {}
-
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
-
-# Puedes probar estas voces:
-# "Polly.Joanna-Generative"
-# "Polly.Joanna"
-PREFERRED_VOICE = "Polly.Joanna-Generative"
-VOICE_LANGUAGE = "en-US"
-
-
-def normalize_phone(phone_number: str) -> str:
-    phone_number = phone_number.strip()
-    if not phone_number.startswith("+"):
-        phone_number = "+" + phone_number
-    return phone_number
-
-
-def ensure_csv_exists():
-    if not os.path.exists(CSV_FILE):
-        with open(CSV_FILE, mode="w", newline="", encoding="utf-8") as file:
-            writer = csv.writer(file)
-            writer.writerow([
-                "timestamp_utc",
-                "call_sid",
-                "to_number",
-                "from_number",
-                "question_1_used_community",
-                "question_2_email_permission",
-                "question_3_interested_session",
-                "short_notes",
-                "recording_url",
-                "recording_sid"
-            ])
-
-
-def build_short_notes(q1: str, q2: str, q3: str) -> str:
-    return (
-        f"Used Community: {q1 or 'No answer'}. "
-        f"Email permission: {q2 or 'No answer'}. "
-        f"Interested in guided session: {q3 or 'No answer'}."
-    )
-
-
-def row_exists(call_sid: str) -> bool:
-    if not os.path.exists(CSV_FILE):
-        return False
-
-    with open(CSV_FILE, mode="r", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            if row.get("call_sid") == call_sid:
-                return True
-    return False
-
-
-def save_to_csv(call_sid: str):
-    ensure_csv_exists()
-
-    if row_exists(call_sid):
-        return
-
-    data = call_data.get(call_sid, {})
-
-    with open(CSV_FILE, mode="a", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
-        writer.writerow([
-            datetime.utcnow().isoformat(),
-            call_sid,
-            data.get("to_number", ""),
-            data.get("from_number", ""),
-            data.get("q1", ""),
-            data.get("q2", ""),
-            data.get("q3", ""),
-            build_short_notes(
-                data.get("q1", ""),
-                data.get("q2", ""),
-                data.get("q3", "")
-            ),
-            data.get("recording_url", ""),
-            data.get("recording_sid", "")
-        ])
-
-
-def create_client():
-    return Client(
-        os.getenv("TWILIO_ACCOUNT_SID"),
-        os.getenv("TWILIO_AUTH_TOKEN")
-    )
-
-
-@app.route("/", methods=["GET"])
-def home():
-    return render_template("dashboard.html")
-
-
-@app.route("/dashboard", methods=["GET"])
-def dashboard():
-    return render_template("dashboard.html")
-
-
-@app.route("/results-json", methods=["GET"])
-def results_json():
-    ensure_csv_exists()
-    rows = []
-    with open(CSV_FILE, mode="r", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            rows.append(row)
-    return jsonify(rows)
-
-
-@app.route("/download-results", methods=["GET"])
-def download_results():
-    ensure_csv_exists()
-    return send_file(
-        CSV_FILE,
-        as_attachment=True,
-        download_name="survey_results.csv",
-        mimetype="text/csv"
-    )
-
-
-@app.route("/voice", methods=["GET", "POST"])
-def voice():
-    response = VoiceResponse()
-
-    call_sid = request.values.get("CallSid", "")
-    to_number = request.values.get("To", "")
-    from_number = request.values.get("From", "")
-
-    call_data[call_sid] = {
-        "to_number": to_number,
-        "from_number": from_number,
-        "q1": "",
-        "q2": "",
-        "q3": "",
-        "recording_url": "",
-        "recording_sid": "",
-        "survey_finished": False
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>COMMAND ALKON Community Caller</title>
+  <style>
+    * {
+      box-sizing: border-box;
     }
 
-    gather = Gather(
-        input="speech",
-        timeout=5,
-        speech_timeout=2,
-        action="/question2",
-        method="POST"
-    )
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(180deg, #eef3f9 0%, #f8fafc 100%);
+      color: #14213d;
+    }
 
-    gather.say(
-        (
-            "Hello, and thank you for taking this call. "
-            "My name is Emma, and I am a virtual community guide from Command Alkon. "
-            "I would love to briefly introduce you to the Command Alkon Community, "
-            "where you can manage your cases, review knowledge articles, create support cases, "
-            "and access helpful groups designed to support your experience. "
-            "This call may be recorded for quality and documentation purposes. "
-            "I will ask you three short questions, and you can answer naturally after each one. "
-            "First question. Have you used the Command Alkon Community before?"
-        ),
-        voice=PREFERRED_VOICE,
-        language=VOICE_LANGUAGE
-    )
+    .container {
+      max-width: 1240px;
+      margin: 36px auto;
+      background: #ffffff;
+      border-radius: 22px;
+      box-shadow: 0 18px 45px rgba(0, 24, 54, 0.12);
+      overflow: hidden;
+    }
 
-    response.append(gather)
-    response.say(
-        (
-            "We were not able to capture a response. "
-            "Thank you for your time, and we hope to connect with you soon. Goodbye."
-        ),
-        voice=PREFERRED_VOICE,
-        language=VOICE_LANGUAGE
-    )
-    response.pause(length=1)
-    response.hangup()
+    .header {
+      background: #ffffff;
+      padding: 28px 32px;
+      border-bottom: 1px solid #e8edf5;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    .logo-wrap {
+      background: #ffffff;
+      padding: 10px 14px;
+      border-radius: 16px;
+      border: 1px solid #edf2f7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
+    .logo-wrap img {
+      height: 72px;
+      width: auto;
+      display: block;
+    }
 
-@app.route("/question2", methods=["GET", "POST"])
-def question2():
-    answer1 = request.form.get("SpeechResult", "").strip()
-    call_sid = request.values.get("CallSid", "")
+    .header-text h1 {
+      margin: 0;
+      font-size: 30px;
+      color: #002b54;
+      line-height: 1.1;
+    }
 
-    if call_sid in call_data:
-        call_data[call_sid]["q1"] = answer1
+    .header-text p {
+      margin: 8px 0 0;
+      color: #516074;
+      font-size: 15px;
+    }
 
-    response = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        timeout=5,
-        speech_timeout=2,
-        action="/question3",
-        method="POST"
-    )
+    .content {
+      padding: 30px;
+    }
 
-    gather.say(
-        (
-            "Thank you. "
-            "Second question. "
-            "Would you feel comfortable sharing your email address so our team can contact you and continue supporting you if needed?"
-        ),
-        voice=PREFERRED_VOICE,
-        language=VOICE_LANGUAGE
-    )
+    .card {
+      background: #ffffff;
+      border: 1px solid #e7edf4;
+      border-radius: 18px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 20px rgba(14, 31, 53, 0.05);
+    }
 
-    response.append(gather)
-    response.say(
-        (
-            "We were not able to capture a response. "
-            "Thank you for your time, and we hope to connect with you soon. Goodbye."
-        ),
-        voice=PREFERRED_VOICE,
-        language=VOICE_LANGUAGE
-    )
-    response.pause(length=1)
-    response.hangup()
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 18px;
+      color: #002b54;
+    }
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    .intro-text {
+      color: #516074;
+      font-size: 15px;
+      line-height: 1.6;
+      margin-bottom: 18px;
+    }
 
+    .feature-list {
+      margin: 0 0 20px 0;
+      padding-left: 18px;
+      color: #516074;
+      font-size: 14px;
+      line-height: 1.6;
+    }
 
-@app.route("/question3", methods=["GET", "POST"])
-def question3():
-    answer2 = request.form.get("SpeechResult", "").strip()
-    call_sid = request.values.get("CallSid", "")
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
 
-    if call_sid in call_data:
-        call_data[call_sid]["q2"] = answer2
+    input {
+      flex: 1;
+      min-width: 260px;
+      padding: 15px 16px;
+      border: 1px solid #cfd8e3;
+      border-radius: 12px;
+      font-size: 16px;
+      outline: none;
+    }
 
-    response = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        timeout=5,
-        speech_timeout=2,
-        action="/complete",
-        method="POST"
-    )
+    input:focus {
+      border-color: #002b54;
+      box-shadow: 0 0 0 4px rgba(0, 43, 84, 0.08);
+    }
 
-    gather.say(
-        (
-            "Thank you. "
-            "Final question. "
-            "Would you be interested in a dedicated session to help you learn how to use the Community, "
-            "including how to create your first cases and explore the available resources?"
-        ),
-        voice=PREFERRED_VOICE,
-        language=VOICE_LANGUAGE
-    )
+    button, a.btn {
+      background: #002b54;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 14px 18px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 15px;
+      font-weight: 600;
+      transition: 0.2s ease;
+    }
 
-    response.append(gather)
-    response.say(
-        (
-            "We were not able to capture a response. "
-            "Thank you for your time, and we hope to connect with you soon. Goodbye."
-        ),
-        voice=PREFERRED_VOICE,
-        language=VOICE_LANGUAGE
-    )
-    response.pause(length=1)
-    response.hangup()
+    button:hover, a.btn:hover {
+      opacity: 0.95;
+      transform: translateY(-1px);
+    }
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    button.secondary, a.secondary {
+      background: #eef3f8;
+      color: #002b54;
+    }
 
+    #status {
+      margin-top: 16px;
+      font-weight: 600;
+      color: #1c3557;
+    }
 
-@app.route("/complete", methods=["GET", "POST"])
-def complete():
-    answer3 = request.form.get("SpeechResult", "").strip()
-    call_sid = request.values.get("CallSid", "")
+    .hint {
+      margin-top: 8px;
+      color: #67778d;
+      font-size: 13px;
+    }
 
-    if call_sid in call_data:
-        call_data[call_sid]["q3"] = answer3
-        call_data[call_sid]["survey_finished"] = True
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 16px;
+    }
 
-    response = VoiceResponse()
-    response.say(
-        (
-            "Thank you so much for your time today. "
-            "We truly appreciate your feedback. "
-            "If you would like, you can visit the Command Alkon Community "
-            "to manage your cases, view knowledge articles, create cases, and access community groups. "
-            "We look forward to supporting you there. "
-            "Have a wonderful day. Goodbye."
-        ),
-        voice=PREFERRED_VOICE,
-        language=VOICE_LANGUAGE
-    )
-    response.pause(length=1)
-    response.hangup()
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    th, td {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 1px solid #e8edf4;
+      font-size: 14px;
+      vertical-align: top;
+    }
 
+    th {
+      background: #f4f8fc;
+      color: #002b54;
+      position: sticky;
+      top: 0;
+      white-space: nowrap;
+    }
 
-@app.route("/recording-status", methods=["POST"])
-def recording_status():
-    call_sid = request.values.get("CallSid", "")
-    recording_url = request.values.get("RecordingUrl", "")
-    recording_sid = request.values.get("RecordingSid", "")
-    recording_status = request.values.get("RecordingStatus", "")
+    td {
+      color: #24364d;
+    }
 
-    if call_sid in call_data and recording_status == "completed":
-        call_data[call_sid]["recording_url"] = recording_url + ".mp3"
-        call_data[call_sid]["recording_sid"] = recording_sid
+    audio {
+      width: 220px;
+    }
 
-        if call_data[call_sid].get("survey_finished"):
-            save_to_csv(call_sid)
+    .community-link {
+      display: inline-block;
+      margin-top: 8px;
+      color: #002b54;
+      font-weight: 600;
+      text-decoration: none;
+    }
 
-    return ("", 204)
+    .community-link:hover {
+      text-decoration: underline;
+    }
 
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
 
-@app.route("/recording/<recording_sid>", methods=["GET"])
-def stream_recording(recording_sid):
-    try:
-        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+      .logo-wrap img {
+        height: 58px;
+      }
 
-        audio_url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Recordings/{recording_sid}.mp3"
+      .header-text h1 {
+        font-size: 24px;
+      }
 
-        twilio_response = requests.get(
-            audio_url,
-            auth=(account_sid, auth_token),
-            timeout=30
-        )
+      audio {
+        width: 180px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="logo-wrap">
+        <img src="/static/logo.png" alt="COMMAND ALKON Logo">
+      </div>
+      <div class="header-text">
+        <h1>COMMAND ALKON Community Caller</h1>
+        <p>Community outreach and engagement dashboard</p>
+      </div>
+    </div>
 
-        return Response(
-            twilio_response.content,
-            mimetype="audio/mpeg"
-        )
-    except Exception as e:
-        return {"error": str(e)}, 500
+    <div class="content">
+      <div class="card">
+        <h2>Make a Community Call</h2>
+        <div class="intro-text">
+          This experience is designed to warmly introduce customers to the
+          <strong>Command Alkon Community</strong> and gather feedback in a friendly way.
+          During the call, the virtual community guide explains that customers can:
+        </div>
 
+        <ul class="feature-list">
+          <li>Manage their support cases</li>
+          <li>Review knowledge articles</li>
+          <li>Create new cases</li>
+          <li>Access community groups and resources</li>
+        </ul>
 
-@app.route("/call/<path:phone_number>", methods=["GET"])
-def make_call_pretty(phone_number):
-    try:
-        client = create_client()
-        clean_number = normalize_phone(phone_number)
+        <a class="community-link" href="https://community.commandalkon.com/" target="_blank" rel="noopener noreferrer">
+          Visit the Command Alkon Community
+        </a>
 
-        call = client.calls.create(
-            to=clean_number,
-            from_=os.getenv("TWILIO_PHONE_NUMBER"),
-            url=f"{os.getenv('PUBLIC_BASE_URL')}/voice",
-            record=True,
-            recording_status_callback=f"{os.getenv('PUBLIC_BASE_URL')}/recording-status",
-            recording_status_callback_method="POST"
-        )
+        <div style="height: 18px;"></div>
 
-        return jsonify({
-            "message": "Call started successfully",
-            "to": clean_number,
-            "call_sid": call.sid
-        })
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        <div class="row">
+          <input id="phoneNumber" type="text" placeholder="Enter phone number. Example: 573001112233" />
+          <button onclick="startCall()">Call Now</button>
+          <a class="btn secondary" href="/download-results">Export CSV</a>
+        </div>
 
+        <div class="hint">
+          Use country code without spaces. Example: 573001112233
+        </div>
 
-@app.route("/debug-logo", methods=["GET"])
-def debug_logo():
-    return jsonify({
-        "logo_expected_path": "/static/logo.png",
-        "public_logo_url": f"{os.getenv('PUBLIC_BASE_URL')}/static/logo.png"
-    })
+        <div id="status"></div>
+      </div>
 
+      <div class="card">
+        <h2>Community Call Results</h2>
+        <div class="row">
+          <button class="secondary" onclick="loadResults()">Refresh Results</button>
+        </div>
 
-if __name__ == "__main__":
-    ensure_csv_exists()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+        <div class="table-wrap">
+          <table id="resultsTable">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>To</th>
+                <th>Used Community</th>
+                <th>Email Permission</th>
+                <th>Interested in Session</th>
+                <th>Short Notes</th>
+                <th>Recording</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function startCall() {
+      const phone = document.getElementById("phoneNumber").value.trim();
+      const status = document.getElementById("status");
+
+      if (!phone) {
+        status.textContent = "Please enter a phone number.";
+        return;
+      }
+
+      status.textContent = "Starting call...";
+
+      try {
+        const response = await fetch(`/call/${encodeURIComponent(phone)}`);
+        const data = await response.json();
+
+        if (data.error) {
+          status.textContent = "Error: " + data.error;
+        } else {
+          status.textContent = `Call started to ${data.to}`;
+        }
+      } catch (error) {
+        status.textContent = "Unexpected error starting the call.";
+      }
+    }
+
+    async function loadResults() {
+      const tbody = document.querySelector("#resultsTable tbody");
+      tbody.innerHTML = "";
+
+      try {
+        const response = await fetch("/results-json");
+        const rows = await response.json();
+
+        rows.reverse().forEach(row => {
+          const recordingCell = row.recording_sid
+            ? `<audio controls preload="none" src="/recording/${row.recording_sid}"></audio>`
+            : "";
+
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${row.timestamp_utc || ""}</td>
+            <td>${row.to_number || ""}</td>
+            <td>${row.question_1_used_community || ""}</td>
+            <td>${row.question_2_email_permission || ""}</td>
+            <td>${row.question_3_interested_session || ""}</td>
+            <td>${row.short_notes || ""}</td>
+            <td>${recordingCell}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    loadResults();
+  </script>
+</body>
+</html>
