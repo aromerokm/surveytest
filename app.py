@@ -10,13 +10,18 @@ load_dotenv()
 
 app = Flask(__name__)
 
+CSV_FILE = "survey_results.csv"
+call_data = {}
+
+# Variables de entorno
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
 
-CSV_FILE = "survey_results.csv"
-call_data = {}
+# Voz preferida
+PREFERRED_VOICE = "Polly.Joanna-Generative"
+VOICE_LANGUAGE = "en-US"
 
 
 def normalize_phone(phone_number: str) -> str:
@@ -64,8 +69,19 @@ def save_to_csv(call_sid: str):
             data.get("q1", ""),
             data.get("q2", ""),
             data.get("q3", ""),
-            build_short_notes(data.get("q1", ""), data.get("q2", ""), data.get("q3", ""))
+            build_short_notes(
+                data.get("q1", ""),
+                data.get("q2", ""),
+                data.get("q3", "")
+            )
         ])
+
+
+def create_client():
+    return Client(
+        os.getenv("TWILIO_ACCOUNT_SID"),
+        os.getenv("TWILIO_AUTH_TOKEN")
+    )
 
 
 @app.route("/", methods=["GET"])
@@ -118,24 +134,32 @@ def voice():
 
     gather = Gather(
         input="speech dtmf",
-        timeout=5,
+        timeout=2,
+        speech_timeout="auto",
         num_digits=1,
         action="/question1",
         method="POST"
     )
 
     gather.say(
-        "Hello. This is an automated survey call from Command Alkon. "
-        "This call may be recorded for quality and documentation purposes. "
-        "Do you have two minutes to answer three short questions? "
-        "Press 1 or say yes to continue.",
-        voice="alice",
-        language="en-US"
+        (
+            "Hello. This is an automated survey call from Command Alkon. "
+            "This call may be recorded for quality and documentation purposes. "
+            "Do you have two minutes to answer three short questions? "
+            "Press 1 or say yes to continue."
+        ),
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
     )
 
     response.append(gather)
-    response.say("We did not receive a response. Goodbye.", voice="alice", language="en-US")
+    response.say(
+        "We did not receive a response. Goodbye.",
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
+    )
     response.hangup()
+
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
@@ -143,24 +167,40 @@ def voice():
 def question1():
     speech = request.form.get("SpeechResult", "")
     digits = request.form.get("Digits", "")
-    response = VoiceResponse()
 
+    response = VoiceResponse()
     accepted = digits == "1" or "yes" in speech.lower()
 
     if not accepted:
-        response.say("No problem. Goodbye.", voice="alice", language="en-US")
+        response.say(
+            "No problem. Goodbye.",
+            voice=PREFERRED_VOICE,
+            language=VOICE_LANGUAGE
+        )
         response.hangup()
         return str(response), 200, {"Content-Type": "text/xml"}
 
-    gather = Gather(input="speech", timeout=6, action="/question2", method="POST")
-    gather.say(
-        "First question. Is this related to a recent support case or something more general?",
-        voice="alice",
-        language="en-US"
+    gather = Gather(
+        input="speech",
+        timeout=2,
+        speech_timeout="auto",
+        action="/question2",
+        method="POST"
     )
+    gather.say(
+        "First question. Is this related to a recent support case, or is it something more general?",
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
+    )
+
     response.append(gather)
-    response.say("No response received. Goodbye.", voice="alice", language="en-US")
+    response.say(
+        "No response received. Goodbye.",
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
+    )
     response.hangup()
+
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
@@ -173,15 +213,27 @@ def question2():
         call_data[call_sid]["q1"] = answer1
 
     response = VoiceResponse()
-    gather = Gather(input="speech", timeout=6, action="/question3", method="POST")
-    gather.say(
-        "Second question. What was the main issue for you?",
-        voice="alice",
-        language="en-US"
+    gather = Gather(
+        input="speech",
+        timeout=2,
+        speech_timeout="auto",
+        action="/question3",
+        method="POST"
     )
+    gather.say(
+        "Second question. What was the main issue you experienced?",
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
+    )
+
     response.append(gather)
-    response.say("No response received. Goodbye.", voice="alice", language="en-US")
+    response.say(
+        "No response received. Goodbye.",
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
+    )
     response.hangup()
+
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
@@ -194,15 +246,27 @@ def question3():
         call_data[call_sid]["q2"] = answer2
 
     response = VoiceResponse()
-    gather = Gather(input="speech", timeout=6, action="/complete", method="POST")
-    gather.say(
-        "Final question. Is this something recurring or a one time situation?",
-        voice="alice",
-        language="en-US"
+    gather = Gather(
+        input="speech",
+        timeout=2,
+        speech_timeout="auto",
+        action="/complete",
+        method="POST"
     )
+    gather.say(
+        "Final question. Has this been recurring, or was it a one time issue?",
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
+    )
+
     response.append(gather)
-    response.say("No response received. Goodbye.", voice="alice", language="en-US")
+    response.say(
+        "No response received. Goodbye.",
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
+    )
     response.hangup()
+
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
@@ -218,21 +282,18 @@ def complete():
     response = VoiceResponse()
     response.say(
         "Thank you. Your responses have been recorded. Goodbye.",
-        voice="alice",
-        language="en-US"
+        voice=PREFERRED_VOICE,
+        language=VOICE_LANGUAGE
     )
     response.hangup()
+
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
 @app.route("/call/<path:phone_number>", methods=["GET"])
 def make_call_pretty(phone_number):
     try:
-        client = Client(
-            os.getenv("TWILIO_ACCOUNT_SID"),
-            os.getenv("TWILIO_AUTH_TOKEN")
-        )
-
+        client = create_client()
         clean_number = normalize_phone(phone_number)
 
         call = client.calls.create(
@@ -248,6 +309,14 @@ def make_call_pretty(phone_number):
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/debug-logo", methods=["GET"])
+def debug_logo():
+    return jsonify({
+        "logo_expected_path": "/static/logo.png",
+        "public_logo_url": f"{os.getenv('PUBLIC_BASE_URL')}/static/logo.png"
+    })
 
 
 if __name__ == "__main__":
