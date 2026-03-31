@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, send_file
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from twilio.rest import Client
 from dotenv import load_dotenv
@@ -10,17 +10,13 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# Variables de entorno
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
 
-# Almacenamiento temporal en memoria para el piloto
-# Clave: CallSid
-call_data = {}
-
 CSV_FILE = "survey_results.csv"
+call_data = {}
 
 
 def normalize_phone(phone_number: str) -> str:
@@ -47,26 +43,16 @@ def ensure_csv_exists():
 
 
 def build_short_notes(q1: str, q2: str, q3: str) -> str:
-    q1_clean = q1.strip() if q1 else "No answer"
-    q2_clean = q2.strip() if q2 else "No answer"
-    q3_clean = q3.strip() if q3 else "No answer"
-
     return (
-        f"Related to: {q1_clean}. "
-        f"Main issue: {q2_clean}. "
-        f"Situation: {q3_clean}."
+        f"Related to: {q1 or 'No answer'}. "
+        f"Main issue: {q2 or 'No answer'}. "
+        f"Situation: {q3 or 'No answer'}."
     )
 
 
 def save_to_csv(call_sid: str):
     ensure_csv_exists()
-
     data = call_data.get(call_sid, {})
-    short_notes = build_short_notes(
-        data.get("q1", ""),
-        data.get("q2", ""),
-        data.get("q3", "")
-    )
 
     with open(CSV_FILE, mode="a", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
@@ -78,13 +64,40 @@ def save_to_csv(call_sid: str):
             data.get("q1", ""),
             data.get("q2", ""),
             data.get("q3", ""),
-            short_notes
+            build_short_notes(data.get("q1", ""), data.get("q2", ""), data.get("q3", ""))
         ])
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return "COMMAND ALKON survey backend running"
+    return render_template("dashboard.html")
+
+
+@app.route("/dashboard", methods=["GET"])
+def dashboard():
+    return render_template("dashboard.html")
+
+
+@app.route("/results-json", methods=["GET"])
+def results_json():
+    ensure_csv_exists()
+    rows = []
+    with open(CSV_FILE, mode="r", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            rows.append(row)
+    return jsonify(rows)
+
+
+@app.route("/download-results", methods=["GET"])
+def download_results():
+    ensure_csv_exists()
+    return send_file(
+        CSV_FILE,
+        as_attachment=True,
+        download_name="survey_results.csv",
+        mimetype="text/csv"
+    )
 
 
 @app.route("/voice", methods=["GET", "POST"])
@@ -121,13 +134,8 @@ def voice():
     )
 
     response.append(gather)
-    response.say(
-        "We did not receive a response. Goodbye.",
-        voice="alice",
-        language="en-US"
-    )
+    response.say("We did not receive a response. Goodbye.", voice="alice", language="en-US")
     response.hangup()
-
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
@@ -135,40 +143,24 @@ def voice():
 def question1():
     speech = request.form.get("SpeechResult", "")
     digits = request.form.get("Digits", "")
-    call_sid = request.values.get("CallSid", "")
-
     response = VoiceResponse()
+
     accepted = digits == "1" or "yes" in speech.lower()
 
     if not accepted:
-        response.say(
-            "No problem. Goodbye.",
-            voice="alice",
-            language="en-US"
-        )
+        response.say("No problem. Goodbye.", voice="alice", language="en-US")
         response.hangup()
         return str(response), 200, {"Content-Type": "text/xml"}
 
-    gather = Gather(
-        input="speech",
-        timeout=6,
-        action="/question2",
-        method="POST"
-    )
+    gather = Gather(input="speech", timeout=6, action="/question2", method="POST")
     gather.say(
         "First question. Is this related to a recent support case or something more general?",
         voice="alice",
         language="en-US"
     )
-
     response.append(gather)
-    response.say(
-        "No response received. Goodbye.",
-        voice="alice",
-        language="en-US"
-    )
+    response.say("No response received. Goodbye.", voice="alice", language="en-US")
     response.hangup()
-
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
@@ -181,26 +173,15 @@ def question2():
         call_data[call_sid]["q1"] = answer1
 
     response = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        timeout=6,
-        action="/question3",
-        method="POST"
-    )
+    gather = Gather(input="speech", timeout=6, action="/question3", method="POST")
     gather.say(
         "Second question. What was the main issue for you?",
         voice="alice",
         language="en-US"
     )
-
     response.append(gather)
-    response.say(
-        "No response received. Goodbye.",
-        voice="alice",
-        language="en-US"
-    )
+    response.say("No response received. Goodbye.", voice="alice", language="en-US")
     response.hangup()
-
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
@@ -213,26 +194,15 @@ def question3():
         call_data[call_sid]["q2"] = answer2
 
     response = VoiceResponse()
-    gather = Gather(
-        input="speech",
-        timeout=6,
-        action="/complete",
-        method="POST"
-    )
+    gather = Gather(input="speech", timeout=6, action="/complete", method="POST")
     gather.say(
         "Final question. Is this something recurring or a one time situation?",
         voice="alice",
         language="en-US"
     )
-
     response.append(gather)
-    response.say(
-        "No response received. Goodbye.",
-        voice="alice",
-        language="en-US"
-    )
+    response.say("No response received. Goodbye.", voice="alice", language="en-US")
     response.hangup()
-
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
@@ -252,42 +222,32 @@ def complete():
         language="en-US"
     )
     response.hangup()
-
     return str(response), 200, {"Content-Type": "text/xml"}
 
 
 @app.route("/call/<path:phone_number>", methods=["GET"])
 def make_call_pretty(phone_number):
     try:
-        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-        twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
-        public_base_url = os.getenv("PUBLIC_BASE_URL")
+        client = Client(
+            os.getenv("TWILIO_ACCOUNT_SID"),
+            os.getenv("TWILIO_AUTH_TOKEN")
+        )
 
-        client = Client(account_sid, auth_token)
         clean_number = normalize_phone(phone_number)
 
         call = client.calls.create(
             to=clean_number,
-            from_=twilio_phone,
-            url=f"{public_base_url}/voice"
+            from_=os.getenv("TWILIO_PHONE_NUMBER"),
+            url=f"{os.getenv('PUBLIC_BASE_URL')}/voice"
         )
 
         return jsonify({
-            "message": "Call started",
+            "message": "Call started successfully",
             "to": clean_number,
             "call_sid": call.sid
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/results", methods=["GET"])
-def results_info():
-    return jsonify({
-        "message": "Results file path",
-        "file": CSV_FILE
-    })
 
 
 if __name__ == "__main__":
