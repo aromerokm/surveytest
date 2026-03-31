@@ -160,7 +160,7 @@ def voice():
     )
     response.hangup()
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    return str(response), 400, {"Content-Type": "text/xml"}
 
 
 @app.route("/question1", methods=["GET", "POST"])
@@ -178,7 +178,7 @@ def question1():
             language=VOICE_LANGUAGE
         )
         response.hangup()
-        return str(response), 200, {"Content-Type": "text/xml"}
+        return str(response), 400, {"Content-Type": "text/xml"}
 
     gather = Gather(
         input="speech",
@@ -201,7 +201,7 @@ def question1():
     )
     response.hangup()
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    return str(response), 400, {"Content-Type": "text/xml"}
 
 
 @app.route("/question2", methods=["GET", "POST"])
@@ -234,7 +234,7 @@ def question2():
     )
     response.hangup()
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    return str(response), 400, {"Content-Type": "text/xml"}
 
 
 @app.route("/question3", methods=["GET", "POST"])
@@ -267,7 +267,7 @@ def question3():
     )
     response.hangup()
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    return str(response), 400, {"Content-Type": "text/xml"}
 
 
 @app.route("/complete", methods=["GET", "POST"])
@@ -287,7 +287,7 @@ def complete():
     )
     response.hangup()
 
-    return str(response), 200, {"Content-Type": "text/xml"}
+    return str(response), 400, {"Content-Type": "text/xml"}
 
 
 @app.route("/call/<path:phone_number>", methods=["GET"])
