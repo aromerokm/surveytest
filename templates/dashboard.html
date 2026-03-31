@@ -270,7 +270,7 @@
 
         rows.reverse().forEach(row => {
           const recordingCell = row.recording_url
-            ? `<audio controls preload="none" src="${row.recording_url}.mp3"></audio>`
+            ? `<audio controls preload="none" src="${row.recording_url}"></audio>`
             : "";
 
           const tr = document.createElement("tr");
