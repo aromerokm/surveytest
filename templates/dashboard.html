@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Command Alkon Survey Caller</title>
+  <title>COMMAND ALKON Survey Caller</title>
   <style>
     * {
       box-sizing: border-box;
@@ -17,7 +17,7 @@
     }
 
     .container {
-      max-width: 1180px;
+      max-width: 1220px;
       margin: 36px auto;
       background: #ffffff;
       border-radius: 22px;
@@ -117,10 +117,6 @@
       font-weight: 600;
     }
 
-    button:hover, a.btn:hover {
-      opacity: 0.95;
-    }
-
     button.secondary, a.secondary {
       background: #eef3f8;
       color: #002b54;
@@ -164,6 +160,10 @@
       font-size: 13px;
     }
 
+    audio {
+      width: 220px;
+    }
+
     @media (max-width: 768px) {
       .header {
         flex-direction: column;
@@ -177,6 +177,10 @@
       .header-text h1 {
         font-size: 24px;
       }
+
+      audio {
+        width: 180px;
+      }
     }
   </style>
 </head>
@@ -187,7 +191,7 @@
         <img src="/static/logo.png" alt="COMMAND ALKON Logo">
       </div>
       <div class="header-text">
-        <h1>Command Alkon Survey Caller</h1>
+        <h1>COMMAND ALKON Survey Caller</h1>
         <p>Outbound voice survey dashboard</p>
       </div>
     </div>
@@ -220,6 +224,7 @@
                 <th>Question 2</th>
                 <th>Question 3</th>
                 <th>Short Notes</th>
+                <th>Recording</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -264,6 +269,10 @@
         const rows = await response.json();
 
         rows.reverse().forEach(row => {
+          const recordingCell = row.recording_url
+            ? `<audio controls preload="none" src="${row.recording_url}.mp3"></audio>`
+            : "";
+
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${row.timestamp_utc || ""}</td>
@@ -272,6 +281,7 @@
             <td>${row.question_2 || ""}</td>
             <td>${row.question_3 || ""}</td>
             <td>${row.short_notes || ""}</td>
+            <td>${recordingCell}</td>
           `;
           tbody.appendChild(tr);
         });
