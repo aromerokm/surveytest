@@ -13,14 +13,12 @@ app = Flask(__name__)
 CSV_FILE = "survey_results.csv"
 call_data = {}
 
-# Variables de entorno
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
 
-# Voz preferida
-PREFERRED_VOICE = "Polly.Joanna-Generative"
+PREFERRED_VOICE = "Polly.Joanna"
 VOICE_LANGUAGE = "en-US"
 
 
@@ -43,7 +41,8 @@ def ensure_csv_exists():
                 "question_1",
                 "question_2",
                 "question_3",
-                "short_notes"
+                "short_notes",
+                "recording_url"
             ])
 
 
@@ -73,7 +72,8 @@ def save_to_csv(call_sid: str):
                 data.get("q1", ""),
                 data.get("q2", ""),
                 data.get("q3", "")
-            )
+            ),
+            data.get("recording_url", "")
         ])
 
 
@@ -129,13 +129,14 @@ def voice():
         "from_number": from_number,
         "q1": "",
         "q2": "",
-        "q3": ""
+        "q3": "",
+        "recording_url": ""
     }
 
     gather = Gather(
         input="speech dtmf",
-        timeout=2,
-        speech_timeout="auto",
+        timeout=4,
+        speech_timeout=2,
         num_digits=1,
         action="/question1",
         method="POST"
@@ -160,7 +161,7 @@ def voice():
     )
     response.hangup()
 
-    return str(response), 400, {"Content-Type": "text/xml"}
+    return str(response), 200, {"Content-Type": "text/xml"}
 
 
 @app.route("/question1", methods=["GET", "POST"])
@@ -178,12 +179,12 @@ def question1():
             language=VOICE_LANGUAGE
         )
         response.hangup()
-        return str(response), 400, {"Content-Type": "text/xml"}
+        return str(response), 200, {"Content-Type": "text/xml"}
 
     gather = Gather(
         input="speech",
-        timeout=2,
-        speech_timeout="auto",
+        timeout=4,
+        speech_timeout=2,
         action="/question2",
         method="POST"
     )
@@ -201,7 +202,7 @@ def question1():
     )
     response.hangup()
 
-    return str(response), 400, {"Content-Type": "text/xml"}
+    return str(response), 200, {"Content-Type": "text/xml"}
 
 
 @app.route("/question2", methods=["GET", "POST"])
@@ -215,8 +216,8 @@ def question2():
     response = VoiceResponse()
     gather = Gather(
         input="speech",
-        timeout=2,
-        speech_timeout="auto",
+        timeout=4,
+        speech_timeout=2,
         action="/question3",
         method="POST"
     )
@@ -234,7 +235,7 @@ def question2():
     )
     response.hangup()
 
-    return str(response), 400, {"Content-Type": "text/xml"}
+    return str(response), 200, {"Content-Type": "text/xml"}
 
 
 @app.route("/question3", methods=["GET", "POST"])
@@ -248,8 +249,8 @@ def question3():
     response = VoiceResponse()
     gather = Gather(
         input="speech",
-        timeout=2,
-        speech_timeout="auto",
+        timeout=4,
+        speech_timeout=2,
         action="/complete",
         method="POST"
     )
@@ -267,7 +268,7 @@ def question3():
     )
     response.hangup()
 
-    return str(response), 400, {"Content-Type": "text/xml"}
+    return str(response), 200, {"Content-Type": "text/xml"}
 
 
 @app.route("/complete", methods=["GET", "POST"])
@@ -287,7 +288,19 @@ def complete():
     )
     response.hangup()
 
-    return str(response), 400, {"Content-Type": "text/xml"}
+    return str(response), 200, {"Content-Type": "text/xml"}
+
+
+@app.route("/recording-status", methods=["POST"])
+def recording_status():
+    call_sid = request.values.get("CallSid", "")
+    recording_url = request.values.get("RecordingUrl", "")
+    recording_status = request.values.get("RecordingStatus", "")
+
+    if call_sid in call_data and recording_status == "completed":
+        call_data[call_sid]["recording_url"] = recording_url
+
+    return ("", 204)
 
 
 @app.route("/call/<path:phone_number>", methods=["GET"])
@@ -299,7 +312,10 @@ def make_call_pretty(phone_number):
         call = client.calls.create(
             to=clean_number,
             from_=os.getenv("TWILIO_PHONE_NUMBER"),
-            url=f"{os.getenv('PUBLIC_BASE_URL')}/voice"
+            url=f"{os.getenv('PUBLIC_BASE_URL')}/voice",
+            record=True,
+            recording_status_callback=f"{os.getenv('PUBLIC_BASE_URL')}/recording-status",
+            recording_status_callback_method="POST"
         )
 
         return jsonify({
