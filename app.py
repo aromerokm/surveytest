@@ -19,9 +19,6 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL")
 
-# Puedes probar estas voces:
-# "Polly.Joanna-Generative"
-# "Polly.Joanna"
 PREFERRED_VOICE = "Polly.Joanna-Generative"
 VOICE_LANGUAGE = "en-US"
 
@@ -136,6 +133,31 @@ def download_results():
         download_name="survey_results.csv",
         mimetype="text/csv"
     )
+
+
+@app.route("/debug-logo", methods=["GET"])
+def debug_logo():
+    return jsonify({
+        "logo_expected_path": "/static/logo.png",
+        "public_logo_url": f"{os.getenv('PUBLIC_BASE_URL')}/static/logo.png"
+    })
+
+
+@app.route("/debug-twilio", methods=["GET"])
+def debug_twilio():
+    sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+    phone = os.getenv("TWILIO_PHONE_NUMBER", "")
+    public_base = os.getenv("PUBLIC_BASE_URL", "")
+
+    return jsonify({
+        "account_sid": sid,
+        "account_sid_last4": sid[-4:] if sid else "",
+        "from_number": phone,
+        "public_base_url": public_base,
+        "has_sid": bool(sid),
+        "has_auth_token": bool(os.getenv("TWILIO_AUTH_TOKEN")),
+        "has_phone_number": bool(phone)
+    })
 
 
 @app.route("/voice", methods=["GET", "POST"])
@@ -344,7 +366,7 @@ def stream_recording(recording_sid):
             mimetype="audio/mpeg"
         )
     except Exception as e:
-        return {"error": str(e)}, 500
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/call/<path:phone_number>", methods=["GET"])
@@ -367,16 +389,12 @@ def make_call_pretty(phone_number):
             "to": clean_number,
             "call_sid": call.sid
         })
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/debug-logo", methods=["GET"])
-def debug_logo():
-    return jsonify({
-        "logo_expected_path": "/static/logo.png",
-        "public_logo_url": f"{os.getenv('PUBLIC_BASE_URL')}/static/logo.png"
-    })
+        return jsonify({
+            "error": str(e),
+            "help": "Check that United States/Canada is enabled in Geo Permissions, confirm Render is using the same Account SID as the Twilio project you configured, and verify the Twilio phone number is voice-enabled."
+        }), 500
 
 
 if __name__ == "__main__":
